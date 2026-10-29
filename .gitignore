@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.pytest_cache/
+
+# Terraform: never commit state (it can contain secrets)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+
+# NOTE: data/usage.db is intentionally NOT ignored - GitHub Actions commits it
+# so the dashboard and trend forecasts have history.

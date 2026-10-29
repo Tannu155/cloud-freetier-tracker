@@ -1,0 +1,79 @@
+# ------------------------------------------------------------------
+# Multi-Cloud Free Tier Tracker - configuration
+# Free tier rules change. Check the official pages and update numbers here:
+#   AWS:    https://aws.amazon.com/free/
+#   Azure:  https://azure.microsoft.com/free/students/
+#   GCP:    https://cloud.google.com/free
+#   Oracle: https://www.oracle.com/cloud/free/
+# ------------------------------------------------------------------
+
+timezone: Asia/Kolkata          # used to decide "today"
+database: data/usage.db         # SQLite file (committed by GitHub Actions)
+alert_threshold_pct: 80         # 🟡 WARN at 80%
+critical_threshold_pct: 95      # 🟠 CRITICAL at 95%  (🔴 OVER at 100%)
+summary_weekday: monday         # weekly summary day ("none" to disable)
+
+# Turn clouds on/off here, or override with env var TRACKER_PROVIDERS=mock,aws
+providers:
+  mock:
+    enabled: true               # fake data - works with no cloud account
+
+  aws:
+    enabled: false
+    profile: ""                 # local AWS CLI profile name ("" = default)
+    starting_credits_usd: 100   # credits you got on the AWS Free plan (check your console)
+
+  azure:
+    enabled: false
+    subscription_id: ""         # or env AZURE_SUBSCRIPTION_ID
+    credit_usd: 100             # Azure for Students credit
+    top_services: 5
+
+  gcp:
+    enabled: false
+    billing_table: ""           # or env GCP_BILLING_TABLE  e.g. myproj.billing_export.gcp_billing_export_v1_XXXXXX
+    max_net_cost: 0             # anything above 0 after credits = alert
+    max_bytes_billed: 104857600 # 100 MB hard cap per query -> can never be charged
+    # Free-tier quantities to watch. "sku_contains" is matched against the SKU name
+    # in your billing export. Verify names/limits against https://cloud.google.com/free
+    skus:
+      - service: Cloud Run
+        sku_contains: Requests
+        label: Requests
+        limit: 2000000
+        unit: requests
+      - service: Cloud Run
+        sku_contains: CPU
+        label: vCPU-seconds
+        limit: 180000
+        unit: vCPU-s
+      - service: Cloud Run Functions
+        sku_contains: Invocations
+        label: Invocations
+        limit: 2000000
+        unit: invocations
+      - service: BigQuery
+        sku_contains: Analysis
+        label: Query data scanned
+        limit: 1
+        unit: TiB
+
+  oracle:
+    enabled: false
+    profile: DEFAULT            # ~/.oci/config profile (local runs)
+    max_cost: 0                 # Always Free = 0. Anything above alerts.
+
+# ------------------------------------------------------------------
+# Mock data used when providers.mock is enabled.
+# daily_rate = average usage per day. cumulative: false = storage-like gauge.
+# ------------------------------------------------------------------
+mock_metrics:
+  - {provider: aws,    service: EC2,         metric: t3.micro instance hours, limit: 750,     unit: Hrs,      daily_rate: 26}
+  - {provider: aws,    service: Lambda,      metric: Requests,                limit: 1000000, unit: requests, daily_rate: 45000}
+  - {provider: aws,    service: S3,          metric: Standard storage,        limit: 5,       unit: GB,       daily_rate: 0.08, base: 1.2, cumulative: false}
+  - {provider: aws,    service: DynamoDB,    metric: Storage,                 limit: 25,      unit: GB,       daily_rate: 0.05, base: 0.5, cumulative: false}
+  - {provider: azure,  service: Subscription, metric: Credit spent,           limit: 100,     unit: USD,      daily_rate: 2.4}
+  - {provider: azure,  service: Functions,   metric: Executions,              limit: 1000000, unit: runs,     daily_rate: 21000}
+  - {provider: gcp,    service: Cloud Run,   metric: Requests,                limit: 2000000, unit: requests, daily_rate: 52000}
+  - {provider: gcp,    service: BigQuery,    metric: Query data scanned,      limit: 1,       unit: TiB,      daily_rate: 0.012}
+  - {provider: oracle, service: Tenancy,     metric: Cost outside Always Free, limit: 0,      unit: USD,      daily_rate: 0}

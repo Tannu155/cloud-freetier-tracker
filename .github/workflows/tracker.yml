@@ -1,0 +1,95 @@
+name: Free Tier Tracker
+
+on:
+  schedule:
+    - cron: "30 3 * * *"   # every day 03:30 UTC = 09:00 IST
+  workflow_dispatch:         # "Run workflow" button for manual runs
+    inputs:
+      summary:
+        description: "Also send the weekly summary now"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # to commit data/usage.db
+  id-token: write   # OIDC login to AWS / Azure / GCP (no stored cloud passwords)
+
+concurrency:
+  group: tracker
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml requests tzdata pytest
+      - run: python -m pytest -q
+
+  track:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # ---- Cloud logins: each step runs only if you configured that cloud ----
+      - name: AWS login (OIDC)
+        if: ${{ vars.AWS_ROLE_ARN != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Azure login (OIDC)
+        if: ${{ vars.AZURE_CLIENT_ID != '' }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: GCP login (Workload Identity Federation)
+        if: ${{ vars.GCP_WIF_PROVIDER != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Run tracker
+        env:
+          TRACKER_PROVIDERS: ${{ vars.TRACKER_PROVIDERS || 'mock' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          GCP_BILLING_TABLE: ${{ vars.GCP_BILLING_TABLE }}
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_REGION: ${{ secrets.OCI_REGION }}
+          OCI_KEY_CONTENT: ${{ secrets.OCI_KEY_CONTENT }}
+        run: |
+          if [ "${{ inputs.summary }}" = "true" ]; then
+            python -m tracker run --summary
+          else
+            python -m tracker run
+          fi
+
+      - name: Save history (commit usage.db)
+        run: |
+          git config user.name  "free-tier-tracker[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/usage.db
+          git diff --cached --quiet || git commit -m "chore: usage data $(date -u +%F) [skip ci]"
+          git push

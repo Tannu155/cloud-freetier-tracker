@@ -1,0 +1,2 @@
+project_id  = "your-gcp-project-id"
+github_repo = "your-github-username/cloud-freetier-tracker"

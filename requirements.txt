@@ -1,0 +1,11 @@
+# Core (enough for mock mode)
+pyyaml>=6.0
+requests>=2.31
+tzdata>=2024.1          # timezone data (needed on Windows)
+
+# Cloud SDKs - only imported when that cloud is enabled
+boto3>=1.39             # AWS (1.39+ has the Free plan credits API)
+azure-identity>=1.15
+azure-mgmt-consumption>=10.0
+google-cloud-bigquery>=3.11
+oci>=2.120              # Oracle Cloud
